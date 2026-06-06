@@ -138,26 +138,50 @@ with tab3:
                         st.write(f"### 📅 {selected_year} {selected_month} 的會議清單：")
                         st.write("點擊右側的 **Download** 按鈕即可下載或開啟檔案：")
                         
-# --- 替換這段 for 迴圈（加入刪除紅鈕功能） ---
+# --- 替換這段 for 迴圈（手機網頁流暢預覽版） ---
                         for pdf in pdf_files:
                             file_full_path = os.path.join(month_path, pdf)
                             
-                            # 讀取檔案內容供網頁下載
+                            # 讀取檔案內容
                             try:
                                 with open(file_full_path, "rb") as f:
                                     pdf_data = f.read()
                             except:
                                 pdf_data = b""
                             
-                            # 建立左右四欄：檔名(佔3份)、瀏覽(佔1份)、下載(佔1份)、刪除(佔1份)
+                            # 將 PDF 轉為 base64 碼，用來製作免下載的線上看連結
+                            import base64
+                            base64_pdf = base64.b64encode(pdf_data).decode('utf-8')
+                            # 製作一個可以直接在新分頁打開 PDF 的網頁格式
+                            pdf_url = f"data:application/pdf;base64,{base64_pdf}"
+                            
+                            # 建立左右四欄
                             col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
                             with col1:
                                 st.text(f"📄 {pdf}")
                             
                             with col2:
-                                if st.button("👁️ 瀏覽", key=f"view_{pdf}"):
-                                    st.session_state[f"preview_{selected_year}_{selected_month}"] = pdf
-                                    st.rerun()
+                                # 💡 改用 HTML 語法的超連結按鈕，target="_blank" 可以強制不論手機電腦都「新開分頁」
+                                # 這樣手機就能直接調用系統閱讀器，滑動看完整檔案，且不需要下載！
+                                button_html = f'''
+                                <a href="{pdf_url}" target="_blank" style="text-decoration: none;">
+                                    <button style="
+                                        display: inline-flex;
+                                        align-items: center;
+                                        justify-content: center;
+                                        background-color: white;
+                                        color: rgb(49, 51, 63);
+                                        border: 1px solid rgba(49, 51, 63, 0.2);
+                                        border-radius: 4px;
+                                        padding: 0.25rem 0.75rem;
+                                        font-size: 14px;
+                                        cursor: pointer;
+                                        height: 38px;
+                                        width: 100%;
+                                    ">👁️ 瀏覽</button>
+                                </a>
+                                '''
+                                st.markdown(button_html, unsafe_allow_html=True)
                                     
                             with col3:
                                 st.download_button(
@@ -169,21 +193,16 @@ with tab3:
                                 )
                                 
                             with col4:
-                                # 使用 streamlit 的 popover 做二次確認，防止誤點直接刪除
                                 with st.popover("🗑️ 刪除", help="點擊以刪除此檔案"):
                                     st.warning("確定要永久刪除此會議記錄嗎？")
                                     if st.button("🔥 確認刪除", key=f"del_conf_{pdf}", type="primary"):
                                         if os.path.exists(file_full_path):
                                             os.remove(file_full_path)
                                             st.success(f"已刪除檔案：{pdf}")
-                                            
-                                            # 如果剛剛正在預覽這檔案，一併清除預覽狀態
-                                            p_key = f"preview_{selected_year}_{selected_month}"
-                                            if p_key in st.session_state and st.session_state[p_key] == pdf:
-                                                del st.session_state[p_key]
-                                                
-                                            st.timer = 1
                                             st.rerun()
+                                            
+                        # 註：原本最底部的「# --- 線上預覽顯示區塊 ---」整段可以全部刪掉了，因為新開分頁更乾淨！
+                        st.markdown("---")
                         
 # --- 線上預覽顯示區塊（智慧手機相容版） ---
                         preview_key = f"preview_{selected_year}_{selected_month}"
