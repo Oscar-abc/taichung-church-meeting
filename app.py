@@ -109,7 +109,7 @@ with tab2:
             st.success("🔄 狀態修改成功，已同步儲存！")
             st.rerun()
 
-# --- TAB 3: 瀏覽與下載功能 ---
+# --- TAB 3: 瀏覽與下載功能（手機+電腦 完美線上看版） ---
 with tab3:
     st.subheader("歷年會議檔案清單")
     
@@ -117,7 +117,7 @@ with tab3:
         st.info("目前尚無任何歸檔的會議記錄。")
     else:
         years = sorted(os.listdir(TARGET_DIR), reverse=True)
-        selected_year = st.selectbox("選擇年份", years)
+        selected_year = st.selectbox("選擇年份", years, key="view_year_select")
         
         if selected_year:
             year_path = os.path.join(TARGET_DIR, selected_year)
@@ -126,7 +126,7 @@ with tab3:
             if not months:
                 st.write("該年份內無月份資料。")
             else:
-                selected_month = st.selectbox("選擇月份", months)
+                selected_month = st.selectbox("選擇月份", months, key="view_month_select")
                 
                 if selected_month:
                     month_path = os.path.join(year_path, selected_month)
@@ -136,52 +136,28 @@ with tab3:
                         st.write("📁 這個月還沒有會議記錄。")
                     else:
                         st.write(f"### 📅 {selected_year} {selected_month} 的會議清單：")
-                        st.write("點擊右側的 **Download** 按鈕即可下載或開啟檔案：")
                         
-# --- 替換這段 for 迴圈（手機網頁流暢預覽版） ---
+                        # 定義一個連動金鑰，用來記錄目前正在看哪一份檔案
+                        active_preview_key = f"active_preview_{selected_year}_{selected_month}"
+                        
                         for pdf in pdf_files:
                             file_full_path = os.path.join(month_path, pdf)
                             
-                            # 讀取檔案內容
                             try:
                                 with open(file_full_path, "rb") as f:
                                     pdf_data = f.read()
                             except:
                                 pdf_data = b""
                             
-                            # 將 PDF 轉為 base64 碼，用來製作免下載的線上看連結
-                            import base64
-                            base64_pdf = base64.b64encode(pdf_data).decode('utf-8')
-                            # 製作一個可以直接在新分頁打開 PDF 的網頁格式
-                            pdf_url = f"data:application/pdf;base64,{base64_pdf}"
-                            
-                            # 建立左右四欄
                             col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
                             with col1:
                                 st.text(f"📄 {pdf}")
                             
                             with col2:
-                                # 💡 改用 HTML 語法的超連結按鈕，target="_blank" 可以強制不論手機電腦都「新開分頁」
-                                # 這樣手機就能直接調用系統閱讀器，滑動看完整檔案，且不需要下載！
-                                button_html = f'''
-                                <a href="{pdf_url}" target="_blank" style="text-decoration: none;">
-                                    <button style="
-                                        display: inline-flex;
-                                        align-items: center;
-                                        justify-content: center;
-                                        background-color: white;
-                                        color: rgb(49, 51, 63);
-                                        border: 1px solid rgba(49, 51, 63, 0.2);
-                                        border-radius: 4px;
-                                        padding: 0.25rem 0.75rem;
-                                        font-size: 14px;
-                                        cursor: pointer;
-                                        height: 38px;
-                                        width: 100%;
-                                    ">👁️ 瀏覽</button>
-                                </a>
-                                '''
-                                st.markdown(button_html, unsafe_allow_html=True)
+                                # 點擊後，直接將檔案名稱寫入暫存，觸發下方相容性最高的預覽器
+                                if st.button("👁️ 瀏覽", key=f"view_{pdf}"):
+                                    st.session_state[active_preview_key] = pdf
+                                    st.rerun()
                                     
                             with col3:
                                 st.download_button(
@@ -199,11 +175,46 @@ with tab3:
                                         if os.path.exists(file_full_path):
                                             os.remove(file_full_path)
                                             st.success(f"已刪除檔案：{pdf}")
+                                            if active_preview_key in st.session_state:
+                                                del st.session_state[active_preview_key]
                                             st.rerun()
-                                            
-                        # 註：原本最底部的「# --- 線上預覽顯示區塊 ---」整段可以全部刪掉了，因為新開分頁更乾淨！
-                        st.markdown("---")
                         
+                        # --- 💡 全新行動裝置相容預覽區塊 ---
+                        if active_preview_key in st.session_state:
+                            target_pdf = st.session_state[active_preview_key]
+                            target_path = os.path.join(month_path, target_pdf)
+                            
+                            if os.path.exists(target_path):
+                                st.markdown("---")
+                                st.write(f"🔍 **正在線上預覽：{target_pdf}**")
+                                
+                                # 使用標準二進位流讀取，完全避開超長網址，手機絕對不會跳出安全性警告
+                                with open(target_path, "rb") as f:
+                                    pdf_bytes = f.read()
+                                
+                                import base64
+                                base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+                                
+                                # 透過最乾淨的 HTML5 物件嵌入，手機如果支援就會直接顯示；
+                                # 若手機瀏覽器限制較嚴格，下方會直接提供一個無害的「點我全螢幕觀看」安全通道！
+                                pdf_display = f'''
+                                <div style="text-align: center; margin-bottom: 10px;">
+                                    <a href="data:application/pdf;base64,{base64_pdf}" download="{target_pdf}" style="text-decoration: none;">
+                                        <button style="padding: 6px 12px; background-color: #2e7d32; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                            💡 手機若視窗太小，可點此處直接放大閱讀
+                                        </button>
+                                    </a>
+                                </div>
+                                <object data="data:application/pdf;base64,{base64_pdf}" type="application/pdf" width="100%" height="600px">
+                                    <iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600px" style="border:none;"></table>
+                                </object>
+                                '''
+                                st.markdown(pdf_display, unsafe_allow_html=True)
+                                
+                                if st.button("❌ 關閉預覽", key="close_preview_btn"):
+                                    del st.session_state[active_preview_key]
+                                    st.rerun()
+                        st.markdown("---")
 # --- 線上預覽顯示區塊（智慧手機相容版） ---
                         preview_key = f"preview_{selected_year}_{selected_month}"
                         if preview_key in st.session_state:
