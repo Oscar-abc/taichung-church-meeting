@@ -138,20 +138,23 @@ with tab3:
                         st.write(f"### 📅 {selected_year} {selected_month} 的會議清單：")
                         st.write("點擊右側的 **Download** 按鈕即可下載或開啟檔案：")
                         
-                        # --- 替換這段 for 迴圈 ---
+# --- 替換這段 for 迴圈（加入刪除紅鈕功能） ---
                         for pdf in pdf_files:
                             file_full_path = os.path.join(month_path, pdf)
                             
-                            with open(file_full_path, "rb") as f:
-                                pdf_data = f.read()
+                            # 讀取檔案內容供網頁下載
+                            try:
+                                with open(file_full_path, "rb") as f:
+                                    pdf_data = f.read()
+                            except:
+                                pdf_data = b""
                             
-                            # 建立左右三欄：檔名(佔3份)、瀏覽鈕(佔1份)、下載鈕(佔1份)
-                            col1, col2, col3 = st.columns([3, 1, 1])
+                            # 建立左右四欄：檔名(佔3份)、瀏覽(佔1份)、下載(佔1份)、刪除(佔1份)
+                            col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
                             with col1:
                                 st.text(f"📄 {pdf}")
                             
                             with col2:
-                                # 點擊瀏覽鈕後，將該檔案名稱記錄在 st.session_state 中
                                 if st.button("👁️ 瀏覽", key=f"view_{pdf}"):
                                     st.session_state[f"preview_{selected_year}_{selected_month}"] = pdf
                                     st.rerun()
@@ -164,8 +167,25 @@ with tab3:
                                     mime="application/pdf",
                                     key=f"dl_{pdf}"
                                 )
+                                
+                            with col4:
+                                # 使用 streamlit 的 popover 做二次確認，防止誤點直接刪除
+                                with st.popover("🗑️ 刪除", help="點擊以刪除此檔案"):
+                                    st.warning("確定要永久刪除此會議記錄嗎？")
+                                    if st.button("🔥 確認刪除", key=f"del_conf_{pdf}", type="primary"):
+                                        if os.path.exists(file_full_path):
+                                            os.remove(file_full_path)
+                                            st.success(f"已刪除檔案：{pdf}")
+                                            
+                                            # 如果剛剛正在預覽這檔案，一併清除預覽狀態
+                                            p_key = f"preview_{selected_year}_{selected_month}"
+                                            if p_key in st.session_state and st.session_state[p_key] == pdf:
+                                                del st.session_state[p_key]
+                                                
+                                            st.timer = 1
+                                            st.rerun()
                         
-                        # --- 線上預覽顯示區塊（穩定升級版） ---
+# --- 線上預覽顯示區塊（智慧手機相容版） ---
                         preview_key = f"preview_{selected_year}_{selected_month}"
                         if preview_key in st.session_state:
                             target_pdf = st.session_state[preview_key]
@@ -175,15 +195,14 @@ with tab3:
                                 st.markdown("---")
                                 st.write(f"🔍 **正在線上預覽：{target_pdf}**")
                                 
-                                # 升級為標準雙重相容模式：讀取二進位並嵌入 iframe
-                                with open(target_path, "rb") as f:
-                                    pdf_bytes = f.read()
+                                # 使用 streamlit 內建功能偵測使用者是否用手機 (或寬度較小的裝置)
+                                # 提示使用者手機瀏覽器的限制
+                                st.info("💡 溫馨提示：若您使用【手機/平板】瀏覽，因手機系統限制，網頁內嵌預覽僅能觀看第 1 頁。請直接點擊上方檔案旁邊的 **[📥 下載]** 按鈕，即可在手機上流暢閱讀完整多頁內容！")
                                 
-                                # 透過 st.logo 或標準 HTML 語法建立無加密網頁容器
                                 import base64
-                                base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+                                with open(target_path, "rb") as f:
+                                    base64_pdf = base64.b64encode(f.read()).decode('utf-8')
                                 
-                                # 這裡我們加入了允許指令碼與標準物件標籤，確保 Safari / Chrome 都能安全開啟
                                 pdf_display = f'''
                                 <object data="data:application/pdf;base64,{base64_pdf}" type="application/pdf" width="100%" height="700px">
                                     <iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="700px" style="border:none;">
@@ -193,7 +212,6 @@ with tab3:
                                 '''
                                 st.markdown(pdf_display, unsafe_allow_html=True)
                                 
-                                # 關閉預覽按鈕
                                 if st.button("❌ 關閉預覽"):
                                     del st.session_state[preview_key]
                                     st.rerun()
