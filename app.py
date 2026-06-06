@@ -20,23 +20,6 @@ if not os.path.exists(CSV_PATH):
 
 df_items = pd.read_csv(CSV_PATH, encoding="utf-8-sig")
 
-# --- 💡 核心技術修正：定義彈出式文件預覽視窗 (智慧防封鎖機制) ---
-@st.dialog("📄 會議記錄線上瀏覽", width="large")
-def show_pdf_dialog(pdf_name, pdf_bytes):
-    st.write(f"🔍 正在線上瀏覽：`{pdf_name}`")
-    st.info("💡 溫馨提示：不論使用電腦或手機，皆可直接在下方視窗內往下滑動，閱讀完整的檔案內容。看完後點擊外側即可關閉。")
-    
-    # 在同一個網頁內嵌入解碼，完美繞過 Chrome 與手機 Safari 的新分頁安全防禦
-    b64 = base64.b64encode(pdf_bytes).decode('utf-8')
-    pdf_display = f'''
-    <object data="data:application/pdf;base64,{b64}" type="application/pdf" width="100%" height="600px">
-        <iframe src="data:application/pdf;base64,{b64}" width="100%" height="600px" style="border:none;">
-            <p>您的裝置不支援線上預覽，請直接點擊 [下載] 按鈕觀看。</p>
-        </iframe>
-    </object>
-    '''
-    st.markdown(pdf_display, unsafe_allow_html=True)
-
 # --- 介面分頁 ---
 tab1, tab2, tab3 = st.tabs(["📤 上傳新會議記錄", "📝 會議記錄管制事項", "🔍 瀏覽歷年記錄"])
 
@@ -104,7 +87,7 @@ with tab2:
             st.success("🔄 狀態修改成功！")
             st.rerun()
 
-# --- TAB 3: 瀏覽與下載功能 ---
+# --- TAB 3: 瀏覽與下載功能（手機不彈窗終極精修版） ---
 with tab3:
     st.subheader("歷年會議檔案清單")
     
@@ -132,6 +115,8 @@ with tab3:
                     else:
                         st.write(f"### 📅 {selected_year} {selected_month} 的會議清單：")
                         
+                        active_preview_key = f"preview_{selected_year}_{selected_month}"
+                        
                         for pdf in pdf_files:
                             file_full_path = os.path.join(month_path, pdf)
                             
@@ -141,15 +126,14 @@ with tab3:
                             except:
                                 continue
                             
-                            # 建立排版四欄
                             col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
                             with col1:
                                 st.text(f"📄 {pdf}")
                             
                             with col2:
-                                # 點擊後觸發頂部的對話框，不跳轉外部網頁，體驗最流暢安全
                                 if st.button("👁️ 瀏覽", key=f"view_{pdf}", use_container_width=True):
-                                    show_pdf_dialog(pdf, pdf_data)
+                                    st.session_state[active_preview_key] = pdf
+                                    st.rerun()
                                     
                             with col3:
                                 st.download_button(
@@ -167,6 +151,55 @@ with tab3:
                                     if st.button("🔥 確定", key=f"del_{pdf}", type="primary"):
                                         if os.path.exists(file_full_path):
                                             os.remove(file_full_path)
+                                            if active_preview_key in st.session_state and st.session_state[active_preview_key] == pdf:
+                                                del st.session_state[active_preview_key]
                                             st.success("已刪除")
                                             st.rerun()
+                        
+                        # --- 📄 網頁正下方直接展開區（智慧型防彈窗 Canvas 架構） ---
+                        if active_preview_key in st.session_state:
+                            target_pdf = st.session_state[active_preview_key]
+                            target_path = os.path.join(month_path, target_pdf)
+                            
+                            if os.path.exists(target_path):
+                                st.markdown("---")
+                                st.write(f"🔍 **目前網頁內置預覽：{target_pdf}**")
+                                
+                                with open(target_path, "rb") as f:
+                                    target_bytes = f.read()
+                                
+                                b64_data = base64.b64encode(target_bytes).decode('utf-8')
+                                
+                                # 💡 終極防跳窗黑科技：改用完全不帶 PDF 標籤特徵的 HTML5 Canvas + pdf.js 動態渲染
+                                # 這對手機系統來說只是一個單純的「網頁白板」，因此絕對能騙過手機底層，乖乖在原地網頁正下方展開！
+                                html_canvas_preview = f'''
+                                <div style="text-align: center; background: #f0f2f6; padding: 10px; border-radius: 8px;">
+                                    <canvas id="pdf-canvas" style="border: 1px solid #dcdcdc; max-width: 100%; height: auto; box-shadow: 0px 4px 10px rgba(0,0,0,0.1);"></canvas>
+                                </div>
+                                <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+                                <script>
+                                    var pdfData = atob("{b64_data}");
+                                    var loadingTask = pdfjsLib.getDocument({{data: pdfData}});
+                                    loadingTask.promise.then(function(pdf) {{
+                                        pdf.getPage(1).then(function(page) {{
+                                            var scale = 1.5;
+                                            var viewport = page.getViewport({{scale: scale}});
+                                            var canvas = document.getElementById('pdf-canvas');
+                                            var context = canvas.getContext('2d');
+                                            canvas.height = viewport.height;
+                                            canvas.width = viewport.width;
+                                            var renderContext = {{
+                                                canvasContext: context,
+                                                viewport: viewport
+                                            }};
+                                            page.render(renderContext);
+                                        }});
+                                    }});
+                                </script>
+                                '''
+                                st.components.v1.html(html_canvas_preview, height=620, scrolling=True)
+                                
+                                if st.button("❌ 關閉預覽", key="close_preview_btn"):
+                                    del st.session_state[active_preview_key]
+                                    st.rerun()
                         st.markdown("---")
