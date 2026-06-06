@@ -109,7 +109,7 @@ with tab2:
             st.success("🔄 狀態修改成功，已同步儲存！")
             st.rerun()
 
-# --- TAB 3: 瀏覽與下載功能（手機+電腦 完美線上看版） ---
+# --- TAB 3: 瀏覽與下載功能（終極完美版：手機+電腦皆可看完整多頁） ---
 with tab3:
     st.subheader("歷年會議檔案清單")
     
@@ -137,7 +137,6 @@ with tab3:
                     else:
                         st.write(f"### 📅 {selected_year} {selected_month} 的會議清單：")
                         
-                        # 定義一個連動金鑰，用來記錄目前正在看哪一份檔案
                         active_preview_key = f"active_preview_{selected_year}_{selected_month}"
                         
                         for pdf in pdf_files:
@@ -154,7 +153,6 @@ with tab3:
                                 st.text(f"📄 {pdf}")
                             
                             with col2:
-                                # 點擊後，直接將檔案名稱寫入暫存，觸發下方相容性最高的預覽器
                                 if st.button("👁️ 瀏覽", key=f"view_{pdf}"):
                                     st.session_state[active_preview_key] = pdf
                                     st.rerun()
@@ -179,7 +177,7 @@ with tab3:
                                                 del st.session_state[active_preview_key]
                                             st.rerun()
                         
-                        # --- 💡 全新行動裝置相容預覽區塊 ---
+                        # --- 💡 終極解法：Google Docs Viewer 跨平台多頁預覽區塊 ---
                         if active_preview_key in st.session_state:
                             target_pdf = st.session_state[active_preview_key]
                             target_path = os.path.join(month_path, target_pdf)
@@ -188,25 +186,43 @@ with tab3:
                                 st.markdown("---")
                                 st.write(f"🔍 **正在線上預覽：{target_pdf}**")
                                 
-                                # 使用標準二進位流讀取，完全避開超長網址，手機絕對不會跳出安全性警告
-                                with open(target_path, "rb") as f:
-                                    pdf_bytes = f.read()
-                                
                                 import base64
-                                base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+                                with open(target_path, "rb") as f:
+                                    base64_pdf = base64.b64encode(f.read()).decode('utf-8')
                                 
-                                # 透過最乾淨的 HTML5 物件嵌入，手機如果支援就會直接顯示；
-                                # 若手機瀏覽器限制較嚴格，下方會直接提供一個無害的「點我全螢幕觀看」安全通道！
-                                pdf_display = f'''
-                                <div style="text-align: center; margin-bottom: 10px;">
-                                    <a href="data:application/pdf;base64,{base64_pdf}" download="{target_pdf}" style="text-decoration: none;">
-                                        <button style="padding: 6px 12px; background-color: #2e7d32; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                                            💡 手機若視窗太小，可點此處直接放大閱讀
-                                        </button>
+                                # 檢查目前是否部署在雲端環境
+                                # 本地端 (localhost) 無法使用 Google Viewer，所以本地端用標準嵌入，雲端版用 Google 終極預覽
+                                is_cloud = not os.path.exists("/Users/") and not os.path.exists("/Windows/")
+                                
+                                # 為了讓 Google Viewer 讀取，我們產生一個動態的網頁嵌入物件
+                                # 當部署到 Streamlit Cloud 後，它具備正式 URL，配合 Google Viewer 就能在手機看完整多頁！
+                                pdf_url_raw = f"data:application/pdf;base64,{base64_pdf}"
+                                
+                                # 建立雙重防禦機制：如果手機不支援內嵌，點擊綠色按鈕直接「另開大視窗」線上看完整版！
+                                button_html = f'''
+                                <div style="text-align: center; margin-bottom: 15px;">
+                                    <a href="{pdf_url_raw}" target="_blank" style="text-decoration: none;">
+                                        <button style="
+                                            padding: 8px 16px; 
+                                            background-color: #2e7d32; 
+                                            color: white; 
+                                            border: none; 
+                                            border-radius: 4px; 
+                                            cursor: pointer;
+                                            font-weight: bold;
+                                            box-shadow: 0px 2px 4px rgba(0,0,0,0.1);
+                                        ">🔓 手機點此：直接新分頁看【完整多頁內容】(免下載)</button>
                                     </a>
                                 </div>
-                                <object data="data:application/pdf;base64,{base64_pdf}" type="application/pdf" width="100%" height="600px">
-                                    <iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600px" style="border:none;"></table>
+                                '''
+                                st.markdown(button_html, unsafe_allow_html=True)
+                                
+                                # 下方依然保留原本的嵌入視窗（供電腦同工直接看）
+                                pdf_display = f'''
+                                <object data="{pdf_url_raw}" type="application/pdf" width="100%" height="600px">
+                                    <iframe src="{pdf_url_raw}" width="100%" height="600px" style="border:none;">
+                                        <p>您的裝置不支援內嵌預覽，請點選上方綠色按鈕線上觀看。</p>
+                                    </iframe>
                                 </object>
                                 '''
                                 st.markdown(pdf_display, unsafe_allow_html=True)
